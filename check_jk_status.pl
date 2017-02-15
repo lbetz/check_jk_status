@@ -1,66 +1,115 @@
 #!/usr/bin/env perl
 
-###############################################################################
-##
-## check_jk_status:
-##
-## Check the status for mod_jk's loadbalancers via XML download from status
-## URL.
-##
-## This program is free software; you can redistribute it and/or modify
-## it under the terms of the GNU General Public License as published by
-## the Free Software Foundation; either version 2 of the License, or
-## (at your option) any later version.
-##
-## This program is distributed in the hope that it will be useful,
-## but WITHOUT ANY WARRANTY; without even the implied warranty of
-## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-## GNU General Public License for more details.
-##
-## You should have received a copy of the GNU General Public License
-## along with this program; if not, write to the Free Software
-## Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
-##
-## $Id: $
-##
-###############################################################################
-
-use strict;
-use Getopt::Long;
-use warnings;
+use Monitoring::Plugin;
+use Monitoring::Plugin::Getopt;
+use Monitoring::Plugin::Threshold;
 use XML::Simple;
-use LWP::Simple;
+use LWP::UserAgent;
 use Data::Dumper;
 
-####################################################
-## Global vars
-####################################################
+## Version
+our $VERSION = '1.0.0';
 
-## Initialize vars
-my $server_ip = '';
-my $uri = '/jkmanager';
-my $balancer  = '';
-my $warning = '';
-my $critical = '';
+## Create plugin objects
+our ($plugin, $options);
 
-## Get user-supplied options
-GetOptions('host=s' => \$server_ip, ,'uri=s' => \$uri, 'balancer=s' =>
-\$balancer, 'warning=i' => \$warning, 'critical=i' => \$critical);
+$plugin = Monitoring::Plugin->new( shortname => '' );
+
+$options = Monitoring::Plugin::Getopt->new(
+  usage   => 'Usage: %s [OPTIONS]',
+  version => $VERSION,
+  url     => 'https://github.com/lbetz/check_jk_status',
+  blurb   => 'Check apache mod_jk status',
+);
+
+## Define options
+$options->arg(
+  spec     => 'hostname|H=s',
+  help     => 'hostname or ip address to check',
+  required => 1,
+);
+
+$options->arg(
+  spec     => 'port|p=i',
+  help     => 'port, default 80 (http) or 443 (https)',
+  required => 0,
+);
+
+$options->arg(
+  spec     => 'uri|u=s',
+  help     => 'uri, default /jkmanager',
+  required => 0,
+  default => '/jkmanager',
+);
+
+$options->arg(
+  spec     => 'balancer|b=s',
+  help     => 'balancer to check',
+  required => 1,
+  default => '/jkmanager',
+);
+
+$options->arg(
+  spec     => 'ssl|s',
+  help     => 'use https instead of http',
+  required => 0,
+);
+
+$options->arg(
+  spec     => 'no_validate|N',
+  help     => 'do not validate the SSL certificate chain',
+  required => 0,
+);
+
+$options->arg(
+  spec     => 'warning|w=s',
+  help     => 'warning threshold of failed members',
+  required => 0,
+);
+
+$options->arg(
+  spec     => 'critical|c=s',
+  help     => 'critical threshold of failed members',
+  required => 0,
+);
+
+## Get options
+$options->getopts();
+
+## Timeout
+alarm $options->timeout;
+
+## Set thresholds
+$threshold = Monitoring::Plugin::Threshold->set_thresholds(
+  warning  => $options->warning,
+  critical => $options->critical,
+);
+
 
 ####################################################
 ## Main APP
 ####################################################
 
-if ( ($server_ip eq '') || ($balancer eq '') || ($warning eq '') ||
-($critical eq '') )
+## Set protocol
+if (defined($options->ssl)) {
+   $proto = 'https://';
+}
+else
 {
- print "\nError: Parameter missing\n";
- &Usage();
- exit(1);
+   $proto = "http://";
+}
+
+## Set dedicated port
+if (defined($options->port)) {
+   $url = $proto.$options->hostname.':'.$options->port.$options->uri;
+}
+else
+{
+   $url = $proto.$options->hostname.$options->uri;
 }
 
 ## Fetch the status
-my $xml = GetXML($server_ip);
+my $xml = GetXML($url);
 
 ## Parse the XML and return the results
 ParseXML($xml);
@@ -69,29 +118,29 @@ ParseXML($xml);
 ## Subs / Functions
 ####################################################
 
-## Print Usage if not all parameters are supplied
-sub Usage()
-{
- print "\nUsage: check_jk_status [PARAMETERS]
-
-Parameters:
- --host=[HOSTNAME]               : Name or IP address of JK management interface
- --uri=[URI]                     : uri, i.e. /jkmanager
- --balancer=[JK BALANCER]        : Name of the JK balancer, default /jkmanager
- --warning=[WARNING THRESHOLD]   : Warning if under runs
- --critical=[CRITICAL THRESHOLD] : Critical if under runs\n\n";
-}
-
 ## Fetch the XML from management address
 sub GetXML
 {
-   ### Get the XML page
-   my $ip = shift;
-   my $url = "http://$ip/$uri/?mime=xml";
-   my $page = get $url;
-   die "Couldn't get $url" unless defined $page;
-   ## Return the XML
-   return $page;
+   ### Get URL
+   my $url = shift;
+
+   ### Create request
+   my $ua = LWP::UserAgent->new( protocols_allowed => ['http','https'], timeout => $options->timeout);
+
+   ### Disable cert validation, if '--ssl' is set
+   if (defined($options->no_validate)) {
+      $ua->ssl_opts ( verify_hostname => 0 );
+   }
+
+   ### Request URL
+   my $response = $ua->request( HTTP::Request->new(GET => $url.'/?mime=xml') );
+
+   if (!$response->is_success) {
+     $plugin->plugin_exit( UNKNOWN, $response->headers->title );
+   }
+
+   ### Return XML content
+   return $response->content;
 }
 
 ## Parse the XML and return the results
@@ -108,18 +157,18 @@ sub ParseXML
    my $status = XMLin($xml, forcearray => ['jk:balancer','jk:member']);
 
    ### Exit if specified balancer wasn't found
-   PrintExit ("Supplied balancer wasn't found!") unless %{$status->{'jk:balancers'}->{'jk:balancer'}->{$balancer}} ;
+   $plugin->nagios_exit( UNKNOWN, 'Supplied balancer was not found!') unless %{$status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}} ;
 
    ### Get number of members
-   my $member_count = $status->{'jk:balancers'}->{'jk:balancer'}->{$balancer}{'member_count'};
+   my $member_count = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}{'member_count'};
 
    ### Check all members
-   foreach my $member ( sort keys %{$status->{'jk:balancers'}->{'jk:balancer'}->{$balancer}->{'jk:member'}}
+   foreach my $member ( sort keys %{$status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}}
 )
    {
        ### Check status for every node activation
-       my $activation = $status->{'jk:balancers'}->{'jk:balancer'}->{$balancer}->{'jk:member'}->{$member}->{'activation'};
-       my $state = $status->{'jk:balancers'}->{'jk:balancer'}->{$balancer}->{'jk:member'}->{$member}->{'state'};
+       my $activation = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'activation'};
+       my $state = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'state'};
 
        if ( $activation ne 'ACT' )
        {
@@ -129,7 +178,6 @@ sub ParseXML
        {
            if ( (($state ne 'OK') && ($state ne 'OK/IDLE')) && ($state ne 'N/A') )
            {
-               #print "STATE: $state\n";
                push (@bad_members, $member);
            }
            else
@@ -140,28 +188,19 @@ sub ParseXML
    }
 
    ### Calaculate possible differnece
-   my $good_boys = $member_count - scalar(@bad_members);
+   my $bad_boys = $member_count - scalar(@good_members);
 
-   if ( $good_boys le $critical)
-   {
-       print "CRITICAL: ".scalar(@bad_members), " of $member_count members are down | members=$good_boys;$warning;$critical \n";
-       exit 2;
-   }
-   elsif ( $good_boys le $warning)
-   {
-       print "WARNING: ".scalar(@bad_members), " of $member_count members are down |  members=$good_boys;$warning;$critical \n";
-       exit 1;
-   }
-   else
-   {
-       print "OK: All members are fine | members=$good_boys;$warning;$critical \n";
-       exit 0;
-   }
-}
+   ### Build output
+   my $output = $bad_boys." of $member_count members are down";
 
-sub PrintExit
-{
-   my $msg = shift;
-   print $msg;
-   exit 1;
+   ### Set perfdata
+   $plugin->add_perfdata(
+     label => 'members',
+     value => scalar(@good_members),
+     uom   => q{},
+     threshold => $threshold,
+   );
+
+   ### Exit status
+   $plugin->nagios_exit( $threshold->get_status($bad_boys+1), $output );
 }
