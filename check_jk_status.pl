@@ -43,6 +43,18 @@ $options->arg(
 );
 
 $options->arg(
+  spec     => 'username|U=s',
+  help     => 'username for basic auth',
+  required => 0,
+);
+
+$options->arg(
+  spec     => 'password|P=s',
+  help     => 'password for basic auth',
+  required => 0,
+);
+
+$options->arg(
   spec     => 'balancer|b=s',
   help     => 'balancer to check',
   required => 1,
@@ -93,19 +105,26 @@ $threshold = Monitoring::Plugin::Threshold->set_thresholds(
 ## Set protocol
 if (defined($options->ssl)) {
    $proto = 'https://';
-}
-else
-{
+} else {
    $proto = "http://";
+}
+
+## Username without password
+$plugin->nagios_exit( UNKNOWN, 'If you specify an username, you have to set a password too!') if ( ($options->username  ne '') && ($options->password eq '') );
+
+## Password without username
+$plugin->nagios_exit( UNKNOWN, 'If you specify a password, you have to set an username too!') if ( ($options->username  eq '') && ($options->password ne '') );
+
+## Set account
+if ( ($options->username ne '') && ($options->password ne '') ) {
+  $account = $options->username.':'.$options->password.'@';
 }
 
 ## Set dedicated port
 if (defined($options->port)) {
-   $url = $proto.$options->hostname.':'.$options->port.$options->uri;
-}
-else
-{
-   $url = $proto.$options->hostname.$options->uri;
+   $url = $proto.$account.$options->hostname.':'.$options->port.$options->uri;
+} else {
+   $url = $proto.$account.$options->hostname.$options->uri;
 }
 
 ## Fetch the status
@@ -163,28 +182,21 @@ sub ParseXML
    my $member_count = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}{'member_count'};
 
    ### Check all members
-   foreach my $member ( sort keys %{$status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}}
-)
-   {
-       ### Check status for every node activation
-       my $activation = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'activation'};
-       my $state = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'state'};
+   foreach my $member ( sort keys %{$status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}} ) {
+      ### Check status for every node activation
+      my $activation = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'activation'};
+      my $state = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'state'};
 
-       if ( $activation ne 'ACT' )
-       {
-           push (@bad_members, $member);
-       }
-       elsif ( $activation eq 'ACT' )
-       {
-           if ( (($state ne 'OK') && ($state ne 'OK/IDLE')) && ($state ne 'N/A') )
-           {
-               push (@bad_members, $member);
-           }
-           else
-           {
-               push (@good_members, $member);
-           }
-       }
+      if ( $activation ne 'ACT' )
+      {
+         push (@bad_members, $member);
+      } elsif ( $activation eq 'ACT' ) {
+         if ( (($state ne 'OK') && ($state ne 'OK/IDLE')) && ($state ne 'N/A') ) {
+            push (@bad_members, $member);
+         } else {
+            push (@good_members, $member);
+         }
+      }
    }
 
    ### Calaculate possible differnece
