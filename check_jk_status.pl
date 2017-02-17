@@ -57,7 +57,7 @@ $options->arg(
 $options->arg(
   spec     => 'balancer|b=s',
   help     => 'balancer to check',
-  required => 0,
+  required => 1,
 );
 
 $options->arg(
