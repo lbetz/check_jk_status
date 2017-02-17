@@ -61,12 +61,6 @@ $options->arg(
 );
 
 $options->arg(
-  spec     => 'worker|W=s',
-  help     => 'worker to check',
-  required => 0,
-);
-
-$options->arg(
   spec     => 'ssl|s',
   help     => 'use https instead of http',
   required => 0,
@@ -178,8 +172,8 @@ sub ParseXML
    my @bad_members = ();
 
    ### Convert XML to hash
-   my $status = XMLin($xml, forcearray => ['jk:balancer','jk:member','jk:ajp']);
-print Dumper($status);
+   my $status = XMLin($xml, forcearray => ['jk:balancer','jk:member']);
+
    ### Exit if specified balancer wasn't found
    $plugin->nagios_exit( UNKNOWN, 'Supplied balancer was not found!') unless %{$status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}};
 
