@@ -6,7 +6,7 @@ Name:          nagios-plugins-jk_status
 Summary:       Nagios Plugins - check_jk_status.pl
 Version:       1.0.0
 Url:           http://github.com/lbetz/check_jk_status
-License:       GPL-3.0
+License:       GPL-2.0+
 Group:         System/Monitoring
 Source0:       %{lname}-%{version}.tar.gz
 Provides:      nagios-plugins-jk_status = %{version}-%{release}

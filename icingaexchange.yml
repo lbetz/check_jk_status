@@ -1,0 +1,19 @@
+---
+name: check_jk_status
+description: "file:///README.md"
+url: "https://github.com/lbetz/check_jk_status"
+tags: Statistic
+vendor: Linux
+target: Operating System
+type: Plugin
+license: gplv2
+releases:
+  -
+    name: 1.0.0
+    description: "1.0.0 Release"
+    files:
+      -
+        name: check_jk_status.pl
+        url: "file:///check_jk_status.pl"
+        description: "Initial release"
+        checksum: 4811038995a653d4694d15bf240df553
