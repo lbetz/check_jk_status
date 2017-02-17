@@ -1,7 +1,7 @@
 # check_jk_status
-Plugin for Icinga, Nagios and Shinken to check the apache status.
+Plugin for Icinga, Nagios and Shinken to check the mod_jk status.
 
-If the apache status page accessable then this plugin checks for open slots, busy workers and idle workers.
+If the jk status page accessable then this plugin checks the connected members of the specified balancer.
 
 Usage: check_jk_status.pl [OPTIONS]
 
