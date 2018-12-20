@@ -186,7 +186,12 @@ sub ParseXML
       my $activation = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'activation'};
       my $state = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'state'};
 
-      if ( $activation ne 'ACT' )
+      # if a node is in diisable status, skip the other checks
+      # nodes marked as failover are in disable status
+      if ( $activation eq 'DIS' )
+      {
+         $member_count = $member_count - 1;
+      } elsif ( $activation ne 'ACT' )
       {
          push (@bad_members, $member);
       } elsif ( $activation eq 'ACT' ) {
