@@ -84,6 +84,12 @@ $options->arg(
   required => 0,
 );
 
+$options->arg(
+  spec     => 'extendedperfdata|e',
+  help     => 'output extended performance data of balancer and balancer members',
+  required => 0,
+);
+
 ## Get options
 $options->getopts();
 
@@ -171,6 +177,9 @@ sub ParseXML
    my @good_members = ();
    my @bad_members = ();
 
+   ### Hash for extended performance data
+   my @perfdata = ();
+
    ### Convert XML to hash
    my $status = XMLin($xml, forcearray => ['jk:balancer','jk:member']);
 
@@ -185,6 +194,49 @@ sub ParseXML
       ### Check status for every node activation
       my $activation = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'activation'};
       my $state = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'state'};
+      if (defined($options->extendedperfdata)) {
+        $perfdata{$member.'_read'}{'value'} = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'read'};
+        $perfdata{$member.'_read'}{'uom'} = 'B';
+        $perfdata{$member.'_transferred'}{'value'} = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'transferred'};
+        $perfdata{$member.'_transferred'}{'uom'} = 'B';
+        $perfdata{$member.'_sessions'}{'value'} =  $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'sessions'};
+        $perfdata{$member.'_sessions'}{'uom'} = 'c';
+        $perfdata{$member.'_errors'}{'value'} = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'errors'};
+        $perfdata{$member.'_errors'}{'uom'} = 'c';
+        $perfdata{$member.'_client_errors'}{'value'} = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'client_errors'};
+        $perfdata{$member.'_client_errors'}{'uom'} = 'c';
+        $perfdata{$member.'_reply_timeouts'}{'value'} = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'reply_timeouts'};
+        $perfdata{$member.'_reply_timeouts'}{'uom'} = 'c';
+        $perfdata{$member.'_requests'}{'value'} = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'elected'};
+        $perfdata{$member.'_requests'}{'uom'} = 'c';
+        $perfdata{$member.'_lbvalue'}{'value'} = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'lbvalue'};
+        $perfdata{$member.'_lbvalue'}{'uom'} = q{};
+        $perfdata{$member.'_busy'}{'value'} = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'busy'};
+        $perfdata{$member.'_busy'}{'uom'} = q{};
+        $perfdata{$member.'_max_busy'}{'value'} = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'max_busy'};
+        $perfdata{$member.'_max_busy'}{'uom'} = q{};
+        $perfdata{$member.'_connected'}{'value'} = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'connected'};
+        $perfdata{$member.'_connected'}{'uom'} = q{};
+        $perfdata{$member.'_max_connected'}{'value'} = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'max_connected'};
+        $perfdata{$member.'_max_connected'}{'uom'} = q{};
+        $perfdata{$member.'_time_to_recover_min'}{'value'} = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'time_to_recover_min'};
+        $perfdata{$member.'_time_to_recover_min'}{'uom'} = 's';
+        $perfdata{$member.'_time_to_recover_max'}{'value'} = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'time_to_recover_max'};
+        $perfdata{$member.'_time_to_recover_max'}{'uom'} = 's';
+
+        ### calculate per second values
+        my $last_reset_ago = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'last_reset_ago'};
+        if (($last_reset_ago ne "0") && ($last_reset_ago > 0)) {
+          $perfdata{$member.'_read_per_sec'}{'value'} = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'read'} / $last_reset_ago;
+          $perfdata{$member.'_read_per_sec'}{'uom'} = q{};
+          $perfdata{$member.'_transferred_per_sec'}{'value'} = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'transferred'} / $last_reset_ago;
+          $perfdata{$member.'_transferred_per_sec'}{'uom'} = q{};
+          $perfdata{$member.'_sessions_per_sec'}{'value'} =  $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'sessions'} / $last_reset_ago;
+          $perfdata{$member.'_sessions_per_sec'}{'uom'} = q{};
+          $perfdata{$member.'_requests_per_sec'}{'value'} = $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'jk:member'}->{$member}->{'elected'} / $last_reset_ago;
+          $perfdata{$member.'_requests_per_sec'}{'uom'} = q{};
+        }
+      }
 
       if ( $activation ne 'ACT' )
       {
@@ -212,6 +264,52 @@ sub ParseXML
      threshold => $threshold,
    );
 
+   if (defined($options->extendedperfdata)) {
+     #
+     ### output balancer performance data
+     $plugin->add_perfdata(
+       label => $options->balancer.'_good',
+       value => $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'good'},
+       uom   => q{},
+       threshold => q{},
+     );
+     $plugin->add_perfdata(
+       label => $options->balancer.'_degraded',
+       value => $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'degraded'},
+       uom   => q{},
+       threshold => q{},
+     );
+     $plugin->add_perfdata(
+       label => $options->balancer.'_bad',
+       value => $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'bad'},
+       uom   => q{},
+       threshold => q{},
+     );
+     $plugin->add_perfdata(
+       label => $options->balancer.'_busy',
+       value => $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'busy'},
+       uom   => q{},
+       threshold => q{},
+     );
+     $plugin->add_perfdata(
+       label => $options->balancer.'_max_busy',
+       value => $status->{'jk:balancers'}->{'jk:balancer'}->{$options->balancer}->{'max_busy'},
+       uom   => q{},
+       threshold => q{},
+     );
+
+     ### output balancer members
+     foreach my $member ( sort keys %perfdata) {
+       $plugin->add_perfdata(
+         label => $member,
+         value => $perfdata{$member}{'value'},
+         uom   => $perfdata{$member}{'uom'},
+         threshold => q{},
+       );
+     }
+   }
+
    ### Exit status
    $plugin->nagios_exit( $threshold->get_status($bad_boys+1), $output );
 }
+
